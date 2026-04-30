@@ -1,0 +1,30 @@
+# Maintenance, Care, and Troubleshooting
+
+## Maintenance
+- Check wiring regularly (especially button and power connections)
+- Make sure SD card is properly inserted in MP3 module
+- Keep Arduino powered with stable supply
+
+## Care
+- Do not press button repeatedly during cooldown
+- Avoid exposing electronics to moisture
+- Secure all components to prevent movement
+
+## Troubleshooting
+
+### Button not working
+- Check wiring to input pin
+- Make sure pull-up/pull-down is correct
+
+### Lights not turning on
+- Check relay/transistor connection
+- Verify power source for lights
+
+### Audio not playing
+- Confirm SD card is inserted
+- Make sure file is named correctly (ex: 0001.mp3)
+- Check TX/RX wiring
+
+### System not responding
+- Restart Arduino
+- Re-upload code
