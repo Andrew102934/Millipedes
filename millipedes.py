@@ -86,3 +86,11 @@ while True:
             sleep(0.1)
 
     sleep(0.1)
+
+
+"""1. Comments were very readable and easy to understand. This helped to reduce the cognitive load on me as I didn't have to think so hard on what your code is doing.
+
+2. Clear and consistent variable names. Your variable names allow for clearer understanding and don't add any confusion when it comes to reading your code. 
+
+3. There aren't really any excess functions or functions that are too complicated and complex. This helps to keep the simplicity and doesn't add cognitive load onto the reader
+"""
