@@ -1,96 +1,136 @@
-from gpiozero import Button, OutputDevice
-from time import sleep, time
-import board
-import busio
-import adafruit_vl53l0x
+#include <Wire.h>
+#include "Adafruit_VL53L0X.h"
+#include <SoftwareSerial.h>
+#include <DFRobotDFPlayerMini.h>
 
-# -----------------------------
-# Pin setup
-# -----------------------------
-BUTTON_PIN = 17       # push button input
-UV_LIGHT_PIN = 27     # relay or MOSFET controlling UV lights
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 
-button = Button(BUTTON_PIN, pull_up=True)
-uv_light = OutputDevice(UV_LIGHT_PIN)
+SoftwareSerial mp3Serial(12, 11);
+DFRobotDFPlayerMini mp3;
 
-# -----------------------------
-# VL53L0X distance sensor setup
-# -----------------------------
-i2c = busio.I2C(board.SCL, board.SDA)
-tof = adafruit_vl53l0x.VL53L0X(i2c)
+// Pins
+const int red1Pin = 8;
+const int red2Pin = 9;
+const int greenPin = 10;
+const int uvPin = 7;
 
-# -----------------------------
-# Settings
-# -----------------------------
-GLOW_TIME = 120            # UV lights stay on for 2 minutes
-COOLDOWN_TIME = 30         # extra lockout after lights turn off
-DETECTION_DISTANCE = 300   # millimeters (30 cm) - adjust as needed
+// Timing
+const unsigned long activeTime = 150000UL;   // 2 min 30 sec
+const unsigned long phase2Time = 33000UL;    // 33 sec
+const unsigned long uvOffTime = 100000UL;     // 1 min 33 sec
 
-lights_active = False
-last_trigger_time = 0
+unsigned long triggerStart = 0;
 
-# Make sure UV starts off
-uv_light.off()
+bool activeMode = false;
+bool readyToTrigger = true;
+bool phase2Started = false;
+bool uvTurnedOff = false;
 
-def visitor_detected():
-    try:
-        distance = tof.range
-        print(f"Distance: {distance} mm")
-        return distance <= DETECTION_DISTANCE
-    except Exception as e:
-        print("Sensor read error:", e)
-        return False
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();
 
-def activate_uv():
-    global lights_active, last_trigger_time
+  pinMode(red1Pin, OUTPUT);
+  pinMode(red2Pin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(uvPin, OUTPUT);
 
-    current_time = time()
+  // Idle state
+  digitalWrite(red1Pin, HIGH);
+  digitalWrite(red2Pin, LOW);
+  digitalWrite(greenPin, HIGH);
+  digitalWrite(uvPin, LOW);
 
-    # prevent spam presses while active or during cooldown
-    if lights_active:
-        print("UV lights already active.")
-        return
+  if (!lox.begin()) {
+    Serial.println("VL53L0X not found. Check wiring.");
+  }
 
-    if current_time - last_trigger_time < COOLDOWN_TIME:
-        print("System cooling down. Please wait.")
-        return
+  mp3Serial.begin(9600);
+  delay(1000);
 
-    # only activate if someone is actually near the exhibit
-    if not visitor_detected():
-        print("No visitor close enough. UV not activated.")
-        return
+  if (!mp3.begin(mp3Serial)) {
+    Serial.println("MP3 module not found. Check wiring or SD card.");
+  } else {
+    mp3.volume(25);
+    Serial.println("MP3 ready.");
+  }
 
-    print("Visitor detected. Turning on UV lights.")
-    lights_active = True
-    uv_light.on()
+  Serial.println("System ready.");
+}
 
-    sleep(GLOW_TIME)
+void loop() {
+  VL53L0X_RangingMeasurementData_t measure;
+  lox.rangingTest(&measure, false);
 
-    uv_light.off()
-    lights_active = False
-    last_trigger_time = time()
-    print("UV lights turned off. Cooldown started.")
+  int distanceCm = -1;
 
-# -----------------------------
-# Main loop
-# -----------------------------
-print("Millipede exhibit ready.")
+  if (measure.RangeStatus != 4) {
+    distanceCm = measure.RangeMilliMeter / 10;
+    Serial.print("Distance: ");
+    Serial.println(distanceCm);
+  } else {
+    Serial.println("Out of range");
+  }
 
-while True:
-    if button.is_pressed:
-        print("Button pressed.")
-        activate_uv()
+  if (distanceCm >= 6 || distanceCm == -1) {
+    readyToTrigger = true;
+  }
 
-        # wait until button is released so one press doesn't trigger multiple times
-        while button.is_pressed:
-            sleep(0.1)
+  if (!activeMode && readyToTrigger && distanceCm > 0 && distanceCm < 6) {
+    activeMode = true;
+    readyToTrigger = false;
+    phase2Started = false;
+    uvTurnedOff = false;
+    triggerStart = millis();
 
-    sleep(0.1)
+    digitalWrite(red1Pin, HIGH);
+    digitalWrite(red2Pin, HIGH);
+    digitalWrite(greenPin, LOW);
+    digitalWrite(uvPin, LOW);
 
+    mp3.play(1);
 
-"""1. Comments were very readable and easy to understand. This helped to reduce the cognitive load on me as I didn't have to think so hard on what your code is doing.
+    Serial.println("START: red1 ON, UV OFF");
+  }
 
-2. Clear and consistent variable names. Your variable names allow for clearer understanding and don't add any confusion when it comes to reading your code. 
+  if (activeMode) {
+    unsigned long elapsed = millis() - triggerStart;
 
-3. There aren't really any excess functions or functions that are too complicated and complex. This helps to keep the simplicity and doesn't add cognitive load onto the reader
-"""
+    Serial.print("Elapsed: ");
+    Serial.println(elapsed);
+
+    // Phase 2 starts at 33 seconds
+    if (!phase2Started && elapsed >= phase2Time) {
+      digitalWrite(red1Pin, LOW);
+      digitalWrite(uvPin, HIGH);
+      phase2Started = true;
+
+      Serial.println("PHASE 2: red1 OFF, UV ON");
+    }
+
+    // UV turns off at 1 min 8 sec
+    if (!uvTurnedOff && elapsed >= uvOffTime) {
+      digitalWrite(red1Pin, LOW);
+      digitalWrite(uvPin, LOW);
+      uvTurnedOff = true;
+
+      Serial.println("UV OFF: red1 still OFF");
+    }
+
+    // End presentation
+    if (elapsed >= activeTime) {
+      activeMode = false;
+
+      digitalWrite(red1Pin, HIGH);
+      digitalWrite(red2Pin, LOW);
+      digitalWrite(greenPin, HIGH);
+      digitalWrite(uvPin, LOW);
+
+      mp3.stop();
+
+      Serial.println("END: back to idle, red1 ON");
+    }
+  }
+
+  delay(250);
+}
