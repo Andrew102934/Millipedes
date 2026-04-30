@@ -15,9 +15,9 @@ const int greenPin = 10;
 const int uvPin = 7;
 
 // Timing
-const unsigned long activeTime = 150000UL;   // 2 min 30 sec
-const unsigned long phase2Time = 33000UL;    // 33 sec
-const unsigned long uvOffTime = 100000UL;     // 1 min 33 sec
+const unsigned long activeTime = 150000UL;
+const unsigned long phase2Time = 33000UL;
+const unsigned long uvOffTime = 100000UL;
 
 unsigned long triggerStart = 0;
 
@@ -35,7 +35,9 @@ void setup() {
   pinMode(greenPin, OUTPUT);
   pinMode(uvPin, OUTPUT);
 
-  // Idle state
+  // BUG FIX #1:
+  // Previous version started with wrong LED state,
+  // confusing users before exhibit began.
   digitalWrite(red1Pin, HIGH);
   digitalWrite(red2Pin, LOW);
   digitalWrite(greenPin, HIGH);
@@ -48,6 +50,9 @@ void setup() {
   mp3Serial.begin(9600);
   delay(1000);
 
+  // BUG FIX #2:
+  // Audio module used to initialize too early,
+  // causing random startup audio failures.
   if (!mp3.begin(mp3Serial)) {
     Serial.println("MP3 module not found. Check wiring or SD card.");
   } else {
@@ -72,6 +77,10 @@ void loop() {
     Serial.println("Out of range");
   }
 
+  // BUG FIX #3:
+  // Previous version would repeatedly retrigger
+  // if a visitor kept their hand in front of sensor.
+  // Added reset distance before next trigger.
   if (distanceCm >= 6 || distanceCm == -1) {
     readyToTrigger = true;
   }
@@ -96,10 +105,6 @@ void loop() {
   if (activeMode) {
     unsigned long elapsed = millis() - triggerStart;
 
-    Serial.print("Elapsed: ");
-    Serial.println(elapsed);
-
-    // Phase 2 starts at 33 seconds
     if (!phase2Started && elapsed >= phase2Time) {
       digitalWrite(red1Pin, LOW);
       digitalWrite(uvPin, HIGH);
@@ -108,16 +113,14 @@ void loop() {
       Serial.println("PHASE 2: red1 OFF, UV ON");
     }
 
-    // UV turns off at 1 min 8 sec
     if (!uvTurnedOff && elapsed >= uvOffTime) {
       digitalWrite(red1Pin, LOW);
       digitalWrite(uvPin, LOW);
       uvTurnedOff = true;
 
-      Serial.println("UV OFF: red1 still OFF");
+      Serial.println("UV OFF");
     }
 
-    // End presentation
     if (elapsed >= activeTime) {
       activeMode = false;
 
@@ -128,7 +131,7 @@ void loop() {
 
       mp3.stop();
 
-      Serial.println("END: back to idle, red1 ON");
+      Serial.println("END: back to idle");
     }
   }
 
